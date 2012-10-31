@@ -1,1 +1,2 @@
-tsc --out ./target/MangeServer.js ./src/MangeServer.ts
+
+tsc --out ./target/MangeServer.js src/MangeServer.ts
