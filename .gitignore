@@ -12,3 +12,8 @@ logs
 results
 
 npm-debug.log
+
+*.err
+*.vimentry
+quick_gen_project*
+*.vimfiles*
