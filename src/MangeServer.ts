@@ -1,6 +1,7 @@
 ///<reference path="../lib/node.d.ts"/>
 "use strict";
 
+
 module htmlTemplate {
   var mainhtml = "<!doctype html>"+
                  "<html>" +
@@ -27,18 +28,95 @@ module htmlTemplate {
   }
 }
 
-module main {
-  import http = module("http");
-  import url = module("url");
-  import fs = module("fs");
-  var jszip = require("node-zip");
 
-  var zipFile:any = {
-    path: "",
-    zip: null,
-    files:[]
+
+module main {
+
+  import fs = module("fs");
+
+  interface archiveFile{
+    name: string;
+    content: any;
+  }
+
+  class ArchiveLoader {
+    __fdFile : string;
+    fileName: string;
+    constructor(archiveName: string) {
+      this.fileName = archiveName;
+      this.__fdFile = fs.openSync( archiveName, "r");
+    }
+    __fileRead( offset: number, length: number): NodeBuffer {
+      var buf = new Buffer(length);
+      fs.readSync( this.__fdFile, buf, offset, length, 0);
+      return buf;
+    }
+    getFileList():archiveFile[]{
+      return [];
+    }
+    getFileByIndex(index:number):NodeBuffer{
+      return new Buffer(0);
+    }
+    close():void{
+      fs.closeSync( this.__fdFile );
+    }
+    static __loaders:any = {}; // map is not supported by TypeScript!
+    static registerLoader(ext:string, loader: new(archiveName:string)=>ArchiveLoader){
+      ArchiveLoader.__loaders[ ext ] = loader;
+    }
+    static createFileLoader(ext:string, fileName:string) {
+      return new ArchiveLoader.__loaders[ext]( fileName );
+    }
   };
 
+
+  import http = module("http");
+  import url = module("url");
+  var jszip = require("node-zip");
+
+  class ZipLoader extends ArchiveLoader{
+    zip = null;
+    files:archiveFile[] = [];
+    constructor( zipName: string) {
+      super(zipName);
+      this.zip = jszip( this.__fileRead(0, fs.fstatSync(this.__fdFile).size).toString("binary"));
+
+      this.files = this.zip.zipEntries.files
+      .reduce((arr, file)=>{
+          var imageExt = /\.(jpg|jpeg|png|gif)$/i;
+          if (imageExt.test(file.fileName)) {
+            arr.push({
+                name: file.fileName,
+                content: file
+            });
+          };
+          return arr;
+      }, [])
+      .sort( (fileA, fileB)=>{
+          return (fileA.name> fileB.name) ? 1 : (fileA.name< fileB.name)? -1 :0 ;
+      });
+    }
+    getFileList(){
+      return this.files;
+    }
+    getFileByIndex( index: number): NodeBuffer {
+      return new Buffer( this.zip.zipEntries.readLocalFile( this.files[index].content ), "binary" );
+    }
+    close(){}
+  };
+  ArchiveLoader.registerLoader("zip", ZipLoader);
+
+
+  var archiveLoader: ArchiveLoader;
+  var loadArchive = (query) => {
+    if ( archiveLoader && archiveLoader.fileName !== query.file ) {
+      archiveLoader.close();
+      archiveLoader = undefined;
+    };
+    if (!archiveLoader) {
+      archiveLoader = ArchiveLoader.createFileLoader(query.type.toLocaleLowerCase(), query.file);
+    }
+  };
 
   var serverProcessor = {
     '/list' : function( query, res) {
@@ -79,12 +157,12 @@ module main {
       var lis = "";
 
       for (var i in dirs) {
-        lis += '<li><a href="list?dir=' +  encodeURIComponent( dirs[i].path ) + '">'+ dirs[i].name +'</a>';
+        lis += '<li><a href="/list?dir=' +  encodeURIComponent( dirs[i].path ) + '">'+ dirs[i].name +'</a>';
       }
 
       var filelis = "";
       for (var i in zipfiles) {
-        filelis += '<li><a target="_blank" href="RedMangaReader?file=' +  encodeURIComponent( zipfiles[i].path ) + '&type='+ encodeURIComponent( zipfiles[i].type ) +'">'+ zipfiles[i].name +'</a>';
+        filelis += '<li><a target="_blank" href="/RedMangaReader?file=' +  encodeURIComponent( zipfiles[i].path ) + '&type='+ encodeURIComponent( zipfiles[i].type ) +'">'+ zipfiles[i].name +'</a>';
       }
 
       res.writeHead(200, {'Content-Type': 'text/html'});
@@ -95,57 +173,45 @@ module main {
             files: filelis
       }));
 
-
       //  		res.end('No file found on this directory\n');
     },
     '/RedMangaReader': function( query, res ){
+      loadArchive( query);
+
       res.writeHead(200, {'Content-Type': 'text/html'});
-      loadFile( query );
-      res.end(
-
-        htmlTemplate.buildMangaPage( { pagecount: zipFile.files.length }));
-
+      res.end( htmlTemplate.buildMangaPage( { pagecount: archiveLoader.getFileList().length }) );
     },
     '/getImage':function(query, res) {
-      res.writeHead(200, {'Content-Type': 'image'});
-      loadFile(query);
-      res.end( new Buffer(zipFile.zip.zipEntries.readLocalFile(zipFile.files[query.index]), "binary") );
+      loadArchive( query);
 
+      res.writeHead(200, {'Content-Type': 'image'});
+      res.end( archiveLoader.getFileByIndex(query.index) ) ;
     },
     '/reader.js': function(query, res) {
       res.writeHead(200, {'Content-Type': 'application/javascript'});
       res.end( fs.readFileSync("./lib/Reader.js") );
     },
-    'default': function (res) {
-      res.writeHead(200, {'Content-Type': 'text/plain'});
-      res.end('Hello World\n');
+    'default': function (query, res) {
+      res.writeHead(500, {'Content-Type': 'text/plain'});
+      res.end('internal error\n');
     }
   }
 
-  function loadFile( query ) {
-    var imageExt = /\.(jpg|jpeg|png|gif)$/i;
-
-    if ( query.type === "zip" ) {
-      if (zipFile.path !== query.file) {
-        zipFile.path = query.file;
-        zipFile.zip = jszip( fs.readFileSync(query.file).toString("binary"));
-        zipFile.files = zipFile.zip.zipEntries.files.slice(0);
-        zipFile.files = zipFile.files.filter(function(a){return  imageExt.test(a.fileName) ;})
-        zipFile.files.sort(function(a,b){return (a.fileName > b.fileName) ? 1 : (a.fileName < b.fileName)? -1:0;});
-      }
-    };
-
-  }
 
   http.createServer(function (req, res) {
 
       var reqmap = url.parse( req.url, true );
-      if (serverProcessor[reqmap.pathname]) {
-        serverProcessor[reqmap.pathname](reqmap.query, res);
-      } else {
-        serverProcessor['default'](res);
+      console.log(req.url);
+      var processor = serverProcessor[reqmap.pathname] || serverProcessor[reqmap.pathname]
+      if ( !serverProcessor[reqmap.pathname] ) {
+        if ( reqmap.pathname === "" || reqmap.pathname === "/" ) {
+          reqmap.pathname = "/list";
+          delete reqmap.query.dir;
+        } else {
+          reqmap.pathname = "default";
+        }
       }
-
+      serverProcessor[reqmap.pathname](reqmap.query, res);
 
   }).listen(808, '0.0.0.0');
 

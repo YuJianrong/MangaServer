@@ -592,7 +592,7 @@ declare module "url" {
         host: string;
         pathname: string;
         search: string;
-        query: string;
+        query: any;
         slashes: bool;
     }
 
@@ -761,7 +761,7 @@ declare module "fs" {
     export function close(fd: string, callback?: Function): void;
     export function closeSync(fd: string): void;
     export function open(path: string, flags: string, mode?: string, callback?: (err: Error, fd: string) =>any): void;
-    export function openSync(path: string, flags: string, mode?: string): void;
+    export function openSync(path: string, flags: string, mode?: string): string;
     export function utimes(path: string, atime: number, mtime: number, callback?: Function): void;
     export function utimesSync(path: string, atime: number, mtime: number): void;
     export function futimes(fd: string, atime: number, mtime: number, callback?: Function): void;

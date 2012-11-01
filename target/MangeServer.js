@@ -1,3 +1,8 @@
+var __extends = this.__extends || function (d, b) {
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+}
 "use strict";
 var htmlTemplate;
 (function (htmlTemplate) {
@@ -16,14 +21,83 @@ var htmlTemplate;
 
 var main;
 (function (main) {
+    var fs = require("fs")
+    var ArchiveLoader = (function () {
+        function ArchiveLoader(archiveName) {
+            this.fileName = archiveName;
+            this.__fdFile = fs.openSync(archiveName, "r");
+        }
+        ArchiveLoader.prototype.__fileRead = function (offset, length) {
+            var buf = new Buffer(length);
+            fs.readSync(this.__fdFile, buf, offset, length, 0);
+            return buf;
+        };
+        ArchiveLoader.prototype.getFileList = function () {
+            return [];
+        };
+        ArchiveLoader.prototype.getFileByIndex = function (index) {
+            return new Buffer(0);
+        };
+        ArchiveLoader.prototype.close = function () {
+            fs.closeSync(this.__fdFile);
+        };
+        ArchiveLoader.__loaders = {
+        };
+        ArchiveLoader.registerLoader = function registerLoader(ext, loader) {
+            ArchiveLoader.__loaders[ext] = loader;
+        }
+        ArchiveLoader.createFileLoader = function createFileLoader(ext, fileName) {
+            return new ArchiveLoader.__loaders[ext](fileName);
+        }
+        return ArchiveLoader;
+    })();    
+    ; ;
     var http = require("http")
     var url = require("url")
-    var fs = require("fs")
     var jszip = require("node-zip");
-    var zipFile = {
-        path: "",
-        zip: null,
-        files: []
+    var ZipLoader = (function (_super) {
+        __extends(ZipLoader, _super);
+        function ZipLoader(zipName) {
+                _super.call(this, zipName);
+            this.zip = null;
+            this.files = [];
+            this.zip = jszip(this.__fileRead(0, fs.fstatSync(this.__fdFile).size).toString("binary"));
+            this.files = this.zip.zipEntries.files.reduce(function (arr, file) {
+                var imageExt = /\.(jpg|jpeg|png|gif)$/i;
+                if(imageExt.test(file.fileName)) {
+                    arr.push({
+                        name: file.fileName,
+                        content: file
+                    });
+                }
+                ; ;
+                return arr;
+            }, []).sort(function (fileA, fileB) {
+                return (fileA.name > fileB.name) ? 1 : (fileA.name < fileB.name) ? -1 : 0;
+            });
+        }
+        ZipLoader.prototype.getFileList = function () {
+            return this.files;
+        };
+        ZipLoader.prototype.getFileByIndex = function (index) {
+            return new Buffer(this.zip.zipEntries.readLocalFile(this.files[index].content), "binary");
+        };
+        ZipLoader.prototype.close = function () {
+        };
+        return ZipLoader;
+    })(ArchiveLoader);    
+    ; ;
+    ArchiveLoader.registerLoader("zip", ZipLoader);
+    var archiveLoader;
+    var loadArchive = function (query) {
+        if(archiveLoader && archiveLoader.fileName !== query.file) {
+            archiveLoader.close();
+            archiveLoader = undefined;
+        }
+        ; ;
+        if(!archiveLoader) {
+            archiveLoader = ArchiveLoader.createFileLoader(query.type.toLocaleLowerCase(), query.file);
+        }
     };
     var serverProcessor = {
         '/list': function (query, res) {
@@ -74,11 +148,11 @@ var main;
             }
             var lis = "";
             for(var i in dirs) {
-                lis += '<li><a href="list?dir=' + encodeURIComponent(dirs[i].path) + '">' + dirs[i].name + '</a>';
+                lis += '<li><a href="/list?dir=' + encodeURIComponent(dirs[i].path) + '">' + dirs[i].name + '</a>';
             }
             var filelis = "";
             for(var i in zipfiles) {
-                filelis += '<li><a target="_blank" href="RedMangaReader?file=' + encodeURIComponent(zipfiles[i].path) + '&type=' + encodeURIComponent(zipfiles[i].type) + '">' + zipfiles[i].name + '</a>';
+                filelis += '<li><a target="_blank" href="/RedMangaReader?file=' + encodeURIComponent(zipfiles[i].path) + '&type=' + encodeURIComponent(zipfiles[i].type) + '">' + zipfiles[i].name + '</a>';
             }
             res.writeHead(200, {
                 'Content-Type': 'text/html'
@@ -90,20 +164,20 @@ var main;
             }));
         },
         '/RedMangaReader': function (query, res) {
+            loadArchive(query);
             res.writeHead(200, {
                 'Content-Type': 'text/html'
             });
-            loadFile(query);
             res.end(htmlTemplate.buildMangaPage({
-                pagecount: zipFile.files.length
+                pagecount: archiveLoader.getFileList().length
             }));
         },
         '/getImage': function (query, res) {
+            loadArchive(query);
             res.writeHead(200, {
                 'Content-Type': 'image'
             });
-            loadFile(query);
-            res.end(new Buffer(zipFile.zip.zipEntries.readLocalFile(zipFile.files[query.index]), "binary"));
+            res.end(archiveLoader.getFileByIndex(query.index));
         },
         '/reader.js': function (query, res) {
             res.writeHead(200, {
@@ -111,37 +185,26 @@ var main;
             });
             res.end(fs.readFileSync("./lib/Reader.js"));
         },
-        'default': function (res) {
-            res.writeHead(200, {
+        'default': function (query, res) {
+            res.writeHead(500, {
                 'Content-Type': 'text/plain'
             });
-            res.end('Hello World\n');
+            res.end('internal error\n');
         }
     };
-    function loadFile(query) {
-        var imageExt = /\.(jpg|jpeg|png|gif)$/i;
-        if(query.type === "zip") {
-            if(zipFile.path !== query.file) {
-                zipFile.path = query.file;
-                zipFile.zip = jszip(fs.readFileSync(query.file).toString("binary"));
-                zipFile.files = zipFile.zip.zipEntries.files.slice(0);
-                zipFile.files = zipFile.files.filter(function (a) {
-                    return imageExt.test(a.fileName);
-                });
-                zipFile.files.sort(function (a, b) {
-                    return (a.fileName > b.fileName) ? 1 : (a.fileName < b.fileName) ? -1 : 0;
-                });
-            }
-        }
-        ; ;
-    }
     http.createServer(function (req, res) {
         var reqmap = url.parse(req.url, true);
-        if(serverProcessor[reqmap.pathname]) {
-            serverProcessor[reqmap.pathname](reqmap.query, res);
-        } else {
-            serverProcessor['default'](res);
+        console.log(req.url);
+        var processor = serverProcessor[reqmap.pathname] || serverProcessor[reqmap.pathname];
+        if(!serverProcessor[reqmap.pathname]) {
+            if(reqmap.pathname === "" || reqmap.pathname === "/") {
+                reqmap.pathname = "/list";
+                delete reqmap.query.dir;
+            } else {
+                reqmap.pathname = "default";
+            }
         }
+        serverProcessor[reqmap.pathname](reqmap.query, res);
     }).listen(808, '0.0.0.0');
     console.log('Server running at http://127.0.0.1:808/');
 })(main || (main = {}));
