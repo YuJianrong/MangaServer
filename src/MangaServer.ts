@@ -177,16 +177,29 @@ module main {
       //  		res.end('No file found on this directory\n');
     },
     '/RedMangaReader': function( query, res ){
-      loadArchive( query);
+      try{
+        loadArchive( query);
+      } catch (e) {
+        res.writeHead(500, {'Content-Type': 'text/plain'});
+        res.end("Internal Error: \n" + e );
+        return;
+      }
 
       res.writeHead(200, {'Content-Type': 'text/html'});
       res.end( htmlTemplate.buildMangaPage( { pagecount: archiveLoader.getFileList().length }) );
     },
     '/getImage':function(query, res) {
-      loadArchive( query);
+      try {
+        loadArchive( query);
+        var fileContent = archiveLoader.getFileByIndex(query.index);
+      } catch(e) {
+        res.writeHead(500, {'Content-Type': 'text/plain'});
+        res.end("Internal Error: \n" + e );
+        return;
+      }
 
       res.writeHead(200, {'Content-Type': 'image'});
-      res.end( archiveLoader.getFileByIndex(query.index) ) ;
+      res.end( fileContent ) ;
     },
     '/reader.js': function(query, res) {
       res.writeHead(200, {'Content-Type': 'application/javascript'});

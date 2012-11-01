@@ -1,0 +1,2 @@
+
+node ./target/MangaServer.js

@@ -164,7 +164,15 @@ var main;
             }));
         },
         '/RedMangaReader': function (query, res) {
-            loadArchive(query);
+            try  {
+                loadArchive(query);
+            } catch (e) {
+                res.writeHead(500, {
+                    'Content-Type': 'text/plain'
+                });
+                res.end("Internal Error: \n" + e);
+                return;
+            }
             res.writeHead(200, {
                 'Content-Type': 'text/html'
             });
@@ -173,11 +181,20 @@ var main;
             }));
         },
         '/getImage': function (query, res) {
-            loadArchive(query);
+            try  {
+                loadArchive(query);
+                var fileContent = archiveLoader.getFileByIndex(query.index);
+            } catch (e) {
+                res.writeHead(500, {
+                    'Content-Type': 'text/plain'
+                });
+                res.end("Internal Error: \n" + e);
+                return;
+            }
             res.writeHead(200, {
                 'Content-Type': 'image'
             });
-            res.end(archiveLoader.getFileByIndex(query.index));
+            res.end(fileContent);
         },
         '/reader.js': function (query, res) {
             res.writeHead(200, {
