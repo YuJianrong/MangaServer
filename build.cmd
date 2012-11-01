@@ -1,2 +1,2 @@
 
-tsc --out ./target/MangeServer.js src/MangeServer.ts
+tsc --out ./target/MangaServer.js src/MangaServer.ts
