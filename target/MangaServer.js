@@ -61,7 +61,7 @@ var main;
                 _super.call(this, zipName);
             this.zip = null;
             this.files = [];
-            this.zip = jszip(this.__fileRead(0, fs.fstatSync(this.__fdFile).size).toString("binary"));
+            this.zip = jszip(this.__fdFile);
             this.files = this.zip.zipEntries.files.reduce(function (arr, file) {
                 var imageExt = /\.(jpg|jpeg|png|gif)$/i;
                 if(imageExt.test(file.fileName)) {

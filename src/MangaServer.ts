@@ -79,7 +79,8 @@ module main {
     files:archiveFile[] = [];
     constructor( zipName: string) {
       super(zipName);
-      this.zip = jszip( this.__fileRead(0, fs.fstatSync(this.__fdFile).size).toString("binary"));
+      // this.zip = jszip( this.__fileRead(0, fs.fstatSync(this.__fdFile).size).toString("binary"));
+      this.zip = jszip( this.__fdFile );
 
       this.files = this.zip.zipEntries.files
       .reduce((arr, file)=>{
