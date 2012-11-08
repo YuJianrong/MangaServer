@@ -48,7 +48,7 @@ module main {
     }
     __fileRead( offset: number, length: number): NodeBuffer {
       var buf = new Buffer(length);
-      fs.readSync( this.__fdFile, buf, offset, length, 0);
+      fs.readSync( this.__fdFile, buf, 0, length, offset);
       return buf;
     }
     getFileList():archiveFile[]{

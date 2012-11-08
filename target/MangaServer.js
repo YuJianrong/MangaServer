@@ -29,7 +29,7 @@ var main;
         }
         ArchiveLoader.prototype.__fileRead = function (offset, length) {
             var buf = new Buffer(length);
-            fs.readSync(this.__fdFile, buf, offset, length, 0);
+            fs.readSync(this.__fdFile, buf, 0, length, offset);
             return buf;
         };
         ArchiveLoader.prototype.getFileList = function () {
